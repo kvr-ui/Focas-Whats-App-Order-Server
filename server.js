@@ -22,7 +22,7 @@ app.use(
 )
 app.use(bodyParser.urlencoded({ extended: true }))
 
-// Health check
+// Health check (also used by the Docker HEALTHCHECK)
 app.get("/", (req, res) => {
     res.send("wacrm order webhook server is running")
 })
