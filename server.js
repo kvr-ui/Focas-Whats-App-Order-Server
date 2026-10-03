@@ -1,6 +1,7 @@
 import express from "express"
 import dotenv from "dotenv"
 import bodyParser from "body-parser"
+import cors from "cors"
 import webhookRouter from "./routes/webhookRoute.js"
 import adminRouter from "./routes/adminRoute.js"
 import authRouter from "./routes/authRoute.js"
@@ -26,6 +27,15 @@ app.use(bodyParser.urlencoded({ extended: true }))
 app.get("/", (req, res) => {
     res.send("wacrm order webhook server is running")
 })
+
+// Admin dashboard (client/) runs on its own domain — allow it to call /api.
+// Comma-separated list in CORS_ORIGINS; webhooks don't need CORS.
+const corsOrigins = (process.env.CORS_ORIGINS || "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean)
+
+app.use("/api", cors({ origin: corsOrigins }))
 
 app.use("/api/auth", authRouter)
 app.use("/api/admin", adminRouter)
