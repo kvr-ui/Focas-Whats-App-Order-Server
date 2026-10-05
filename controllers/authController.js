@@ -2,7 +2,7 @@ import crypto from "crypto"
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
 import Admin from "../models/adminModel.js"
-import { sendTextMessage } from "../services/wacrmService.js"
+import { sendTextMessage, sendOtpTemplate, waitForDelivery } from "../services/wacrmService.js"
 import {
     normalizePhone,
     isValidPhone,
@@ -48,17 +48,31 @@ export const sendOtp = async (req, res) => {
         admin.otpSentAt = new Date()
         await admin.save()
 
-        const result = await sendTextMessage(
-            phone,
-            `${otp} is your Orders admin login OTP. It is valid for 5 minutes. Do not share it with anyone.`
-        )
-
         if (process.env.NODE_ENV !== "production") {
             console.log(`[dev] OTP for ${phone}: ${otp}`)
         }
 
-        if (!result || result.error) {
-            return res.status(502).json({ error: "Could not send the OTP on WhatsApp. Try again or use password." })
+        // Prefer the approved authentication template (delivers any time);
+        // plain text only reaches numbers that messaged us in the last 24h
+        const result = process.env.WACRM_OTP_TEMPLATE
+            ? await sendOtpTemplate(phone, otp)
+            : await sendTextMessage(
+                  phone,
+                  `${otp} is your Orders admin login OTP. It is valid for 5 minutes. Do not share it with anyone.`
+              )
+
+        const delivery = result && !result.error ? await waitForDelivery(result) : "failed"
+
+        if (delivery === "failed") {
+            console.warn(`OTP to ${phone} was not delivered by WhatsApp`)
+            // Let them request another one straight away
+            admin.otpSentAt = undefined
+            await admin.save()
+
+            const error = process.env.WACRM_OTP_TEMPLATE
+                ? "WhatsApp could not deliver the OTP. Try again or use password."
+                : "WhatsApp could not deliver the OTP. Send any message to our WhatsApp number first, then request the OTP again — or use password."
+            return res.status(502).json({ error })
         }
 
         res.json({ message: "OTP sent on WhatsApp", expiresIn: OTP_TTL_MS / 1000 })
